@@ -28,6 +28,14 @@ def is_admin(message):
     return message.from_user.id == ADMIN_ID
 
 
+def is_group_member(user_id):
+    try:
+        member = bot.get_chat_member(TARGET_GROUP_ID, user_id)
+        return member.status in ("member", "administrator", "creator")
+    except Exception:
+        return False
+
+
 def build_report(entries, title, clear=False):
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     if not entries:
@@ -62,7 +70,6 @@ def log_message(message, content_type, text=None):
 
 def send_daily_report():
     if not ADMIN_ID:
-        print("ADMIN_TELEGRAM_ID не задан — ежедневный отчёт отключён")
         return
     today = datetime.now().day
     do_clear = today in (1, 15)
@@ -74,8 +81,6 @@ def send_daily_report():
     report = build_report(entries, title)
     try:
         bot.send_message(ADMIN_ID, report)
-        action = "з очищенням списку" if do_clear else "без очищення"
-        print(f"Щоденний звіт надіслано адміністратору ({action})")
     except Exception as ex:
         print(f"Ошибка отправки отчёта: {ex}")
 
@@ -92,50 +97,35 @@ def handle_start(message):
     if message.chat.type != "private":
         return
     if is_admin(message):
-        bot.send_message(
-            message.chat.id,
-            "👑 Вітаю, адміне!\n\n"
-            "Доступні команди:\n"
+        bot.send_message(message.chat.id,
+            "👑 Вітаю, адміне!\n\nДоступні команди:\n"
             "/report — отримати звіт прямо зараз\n"
             "/clear — очистити список повідомлень\n"
-            "/stats — кількість повідомлень за сьогодні\n"
-            "/myid — ваш Telegram ID"
-        )
+            "/stats — статистика\n/myid — ваш Telegram ID")
     else:
-        bot.send_message(
-            message.chat.id,
-            "Надішліть своє повідомлення і я відправлю його в групу анонімно"
-        )
+        bot.send_message(message.chat.id,
+            "Надішліть своє повідомлення і я відправлю його в групу анонімно")
 
 
 @bot.message_handler(commands=["myid"])
 def handle_myid(message):
     if message.chat.type != "private":
         return
-    bot.send_message(
-        message.chat.id,
-        f"Ваш Telegram ID: `{message.from_user.id}`",
-        parse_mode="Markdown"
-    )
+    bot.send_message(message.chat.id, f"Ваш Telegram ID: `{message.from_user.id}`", parse_mode="Markdown")
 
 
 @bot.message_handler(commands=["report"])
 def handle_report(message):
-    if message.chat.type != "private":
-        return
-    if not is_admin(message):
+    if message.chat.type != "private" or not is_admin(message):
         return
     with log_lock:
         entries = list(message_log)
-    report = build_report(entries, "📊 Поточний звіт (без очищення)")
-    bot.send_message(message.chat.id, report)
+    bot.send_message(message.chat.id, build_report(entries, "📊 Поточний звіт"))
 
 
 @bot.message_handler(commands=["clear"])
 def handle_clear(message):
-    if message.chat.type != "private":
-        return
-    if not is_admin(message):
+    if message.chat.type != "private" or not is_admin(message):
         return
     with log_lock:
         count = len(message_log)
@@ -145,25 +135,16 @@ def handle_clear(message):
 
 @bot.message_handler(commands=["stats"])
 def handle_stats(message):
-    if message.chat.type != "private":
-        return
-    if not is_admin(message):
+    if message.chat.type != "private" or not is_admin(message):
         return
     with log_lock:
         total = len(message_log)
         texts = sum(1 for e in message_log if e["type"] == "ТЕКСТ")
         photos = sum(1 for e in message_log if e["type"] == "ФОТО")
-        videos = sum(1 for e in message_log if e["type"] == "ВИДЕО")
+        videos = sum(1 for e in message_log if e["type"] == "ВІДЕО")
         unique_users = len(set(e["user_id"] for e in message_log))
-    bot.send_message(
-        message.chat.id,
-        f"📈 Статистика (з останнього очищення):\n\n"
-        f"Всього повідомлень: {total}\n"
-        f"💬 Текст: {texts}\n"
-        f"🖼 Фото: {photos}\n"
-        f"🎬 Відео: {videos}\n"
-        f"👥 Унікальних користувачів: {unique_users}"
-    )
+    bot.send_message(message.chat.id,
+        f"📈 Статистика:\n\nВсього: {total}\n💬 Текст: {texts}\n🖼 Фото: {photos}\n🎬 Відео: {videos}\n👥 Унікальних: {unique_users}")
 
 
 @bot.message_handler(content_types=["text"])
@@ -173,44 +154,45 @@ def handle_text(message):
     if is_admin(message):
         bot.send_message(message.chat.id, "⚠️ Ви адмін. Ваше повідомлення не пересилається.")
         return
+    if not is_group_member(message.from_user.id):
+        bot.send_message(message.chat.id, "❌ Ви не є учасником групи. Доступ заборонено.")
+        return
     log_message(message, "ТЕКСТ", text=message.text)
     try:
         bot.send_message(TARGET_GROUP_ID, message.text)
     except Exception as e:
-        print(f"Ошибка при пересылке текста: {e}")
+        print(f"Ошибка: {e}")
 
 
 @bot.message_handler(content_types=["photo"])
 def handle_photo(message):
-    if message.chat.type != "private":
+    if message.chat.type != "private" or is_admin(message):
         return
-    if is_admin(message):
+    if not is_group_member(message.from_user.id):
+        bot.send_message(message.chat.id, "❌ Ви не є учасником групи. Доступ заборонено.")
         return
     log_message(message, "ФОТО", text=message.caption)
     try:
-        photo = message.photo[-1]
-        caption = message.caption or None
-        bot.send_photo(TARGET_GROUP_ID, photo.file_id, caption=caption)
+        bot.send_photo(TARGET_GROUP_ID, message.photo[-1].file_id, caption=message.caption)
     except Exception as e:
-        print(f"Ошибка при пересылке фото: {e}")
+        print(f"Ошибка: {e}")
 
 
 @bot.message_handler(content_types=["video"])
 def handle_video(message):
-    if message.chat.type != "private":
+    if message.chat.type != "private" or is_admin(message):
         return
-    if is_admin(message):
+    if not is_group_member(message.from_user.id):
+        bot.send_message(message.chat.id, "❌ Ви не є учасником групи. Доступ заборонено.")
         return
     log_message(message, "ВИДЕО", text=message.caption)
     try:
-        caption = message.caption or None
-        bot.send_video(TARGET_GROUP_ID, message.video.file_id, caption=caption)
+        bot.send_video(TARGET_GROUP_ID, message.video.file_id, caption=message.caption)
     except Exception as e:
-        print(f"Ошибка при пересылке видео: {e}")
+        print(f"Ошибка: {e}")
 
 
 if __name__ == "__main__":
-    t = threading.Thread(target=scheduler_thread, daemon=True)
-    t.start()
+    threading.Thread(target=scheduler_thread, daemon=True).start()
     print("Бот запущен. Ожидаю сообщения...")
     bot.infinity_polling(timeout=60, long_polling_timeout=60)
