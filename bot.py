@@ -31,8 +31,11 @@ def is_admin(message):
 def is_group_member(user_id):
     try:
         member = bot.get_chat_member(TARGET_GROUP_ID, user_id)
-        return member.status in ("member", "administrator", "creator")
-    except Exception:
+        status = member.status
+        print(f"[CHECK] user_id={user_id} status={status}")
+        return status in ("member", "administrator", "creator")
+    except Exception as e:
+        print(f"[CHECK] user_id={user_id} помилка: {e}")
         return False
 
 
@@ -55,17 +58,11 @@ def log_message(message, content_type, text=None):
     username = f"@{user.username}" if user.username else "нет username"
     name = f"{user.first_name or ''} {user.last_name or ''}".strip()
     now = datetime.now()
-    entry = {
-        "time": now,
-        "type": content_type,
-        "user_id": user.id,
-        "name": name,
-        "username": username,
-        "text": text or "",
-    }
+    entry = {"time": now, "type": content_type, "user_id": user.id,
+             "name": name, "username": username, "text": text or ""}
     with log_lock:
         message_log.append(entry)
-    print(f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] {content_type} | ID: {user.id} | Имя: {name} | {username}")
+    print(f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] {content_type} | ID: {user.id} | {name} | {username}")
 
 
 def send_daily_report():
@@ -141,10 +138,11 @@ def handle_stats(message):
         total = len(message_log)
         texts = sum(1 for e in message_log if e["type"] == "ТЕКСТ")
         photos = sum(1 for e in message_log if e["type"] == "ФОТО")
-        videos = sum(1 for e in message_log if e["type"] == "ВІДЕО")
+        videos = sum(1 for e in message_log if e["type"] == "ВИДЕО")
         unique_users = len(set(e["user_id"] for e in message_log))
     bot.send_message(message.chat.id,
-        f"📈 Статистика:\n\nВсього: {total}\n💬 Текст: {texts}\n🖼 Фото: {photos}\n🎬 Відео: {videos}\n👥 Унікальних: {unique_users}")
+        f"📈 Статистика:\n\nВсього: {total}\n💬 Текст: {texts}\n"
+        f"🖼 Фото: {photos}\n🎬 Відео: {videos}\n👥 Унікальних: {unique_users}")
 
 
 @bot.message_handler(content_types=["text"])
