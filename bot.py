@@ -10,7 +10,7 @@ if not TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN не задан в переменных окружения")
 
 ADMIN_ID = int(os.environ.get("ADMIN_TELEGRAM_ID", 0))
-TARGET_GROUP_ID = -1003482313888
+TARGET_GROUP_ID = -1003722157144
 
 bot = telebot.TeleBot(TOKEN)
 
