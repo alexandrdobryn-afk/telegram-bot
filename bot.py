@@ -192,7 +192,7 @@ def handle_video(message):
 
 if __name__ == "__main__":
    time.sleep(10)
-    bot.delete_webhook(drop_pending_updates=True)
+    bot.delete_webhook()
     t = threading.Thread(target=scheduler_thread, daemon=True)
     t.start()
     print("Бот запущен. Ожидаю сообщения...")
