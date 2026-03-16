@@ -191,6 +191,9 @@ def handle_video(message):
 
 
 if __name__ == "__main__":
-    threading.Thread(target=scheduler_thread, daemon=True).start()
+    time.sleep(5)
+    bot.remove_webhook()
+    t = threading.Thread(target=scheduler_thread, daemon=True)
+    t.start()
     print("Бот запущен. Ожидаю сообщения...")
     bot.infinity_polling(timeout=60, long_polling_timeout=60)
